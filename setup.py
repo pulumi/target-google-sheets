@@ -2,7 +2,7 @@
 
 from setuptools import setup
 
-setup(name='target-gsheet',
+setup(name='target-google-sheets',
       version='0.2.5',
       description='Singer.io target for writing data to Google Sheets',
       author='Stitch',
@@ -16,6 +16,6 @@ setup(name='target-gsheet',
       ],
       entry_points='''
           [console_scripts]
-          target-gsheet=target_gsheet:main
+          target-google-sheets=target_gsheet:main
       ''',
 )

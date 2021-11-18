@@ -23,23 +23,19 @@ from oauth2client import client
 from oauth2client import tools
 from oauth2client.file import Storage
 
+# Read the config
 try:
     parser = argparse.ArgumentParser(parents=[tools.argparser])
     parser.add_argument('-c', '--config', help='Config file', required=True)
     flags = parser.parse_args()
-
 except ImportError:
     flags = None
 
 logging.getLogger('googleapiclient.discovery_cache').setLevel(logging.ERROR)
 logger = singer.get_logger()
 
-SCOPES = 'https://www.googleapis.com/auth/spreadsheets'
-CLIENT_SECRET_FILE = 'client_secret.json'
-APPLICATION_NAME = 'Singer Sheets Target'
 
-
-def get_credentials():
+def get_credentials(config):
     """Gets valid user credentials from storage.
 
     If nothing has been stored, or if the stored credentials are invalid,
@@ -48,23 +44,7 @@ def get_credentials():
     Returns:
         Credentials, the obtained credential.
     """
-    home_dir = os.path.expanduser('~')
-    credential_dir = os.path.join(home_dir, '.credentials')
-    if not os.path.exists(credential_dir):
-        os.makedirs(credential_dir)
-    credential_path = os.path.join(credential_dir,
-                                   'sheets.googleapis.com-singer-target.json')
-
-    store = Storage(credential_path)
-    credentials = store.get()
-    if not credentials or credentials.invalid:
-        flow = client.flow_from_clientsecrets(CLIENT_SECRET_FILE, SCOPES)
-        flow.user_agent = APPLICATION_NAME
-        if flags:
-            credentials = tools.run_flow(flow, store, flags)
-        else: # Needed only for compatibility with Python 2.6
-            credentials = tools.run(flow, store)
-        print('Storing credentials to ' + credential_path)
+    credentials = client.AccessTokenCredentials(config['access_token'], config.get("user-agent", 'target-google-sheets <hello@hotglue.xyz>'))
     return credentials
 
 
@@ -174,43 +154,21 @@ def persist_lines(service, spreadsheet, lines):
 
     return state
 
-
-def collect():
-    try:
-        version = pkg_resources.get_distribution('target-gsheet').version
-        conn = http.client.HTTPSConnection('collector.stitchdata.com', timeout=10)
-        conn.connect()
-        params = {
-            'e': 'se',
-            'aid': 'singer',
-            'se_ca': 'target-gsheet',
-            'se_ac': 'open',
-            'se_la': version,
-        }
-        conn.request('GET', '/i?' + urllib.parse.urlencode(params))
-        response = conn.getresponse()
-        conn.close()
-    except:
-        logger.debug('Collection request failed')
-
         
 def main():
+    # Read the config
     with open(flags.config) as input:
         config = json.load(input)
-        
-    if not config.get('disable_collection', False):
-        logger.info('Sending version information to stitchdata.com. ' +
-                    'To disable sending anonymous usage data, set ' +
-                    'the config parameter "disable_collection" to true')
-        threading.Thread(target=collect).start()
 
-    credentials = get_credentials()
+    # Get the Google OAuth creds
+    credentials = get_credentials(config)
     http = credentials.authorize(httplib2.Http())
     discoveryUrl = ('https://sheets.googleapis.com/$discovery/rest?'
                     'version=v4')
     service = discovery.build('sheets', 'v4', http=http,
                               discoveryServiceUrl=discoveryUrl)
 
+    # Get spreadsheet_id
     spreadsheet = get_spreadsheet(service, config['spreadsheet_id'])
 
     input = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
