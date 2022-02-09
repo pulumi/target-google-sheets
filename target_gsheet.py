@@ -12,6 +12,7 @@ import threading
 import http.client
 import urllib
 import pkg_resources
+import backoff
 
 from jsonschema import validate
 import singer
@@ -19,9 +20,11 @@ import singer
 import httplib2
 
 from apiclient import discovery
+from googleapiclient.errors import HttpError
 from oauth2client import client
 from oauth2client import tools
 from oauth2client.file import Storage
+
 
 # Read the config
 try:
@@ -31,9 +34,11 @@ try:
 except ImportError:
     flags = None
 
+logging.getLogger('backoff').setLevel(logging.CRITICAL)
 logging.getLogger('googleapiclient.discovery_cache').setLevel(logging.ERROR)
 logger = singer.get_logger()
 
+MAX_RETRIES = 10
 
 def get_credentials(config):
     """Gets valid user credentials from storage.
@@ -46,6 +51,16 @@ def get_credentials(config):
     """
     credentials = client.AccessTokenCredentials(config['access_token'], config.get("user-agent", 'target-google-sheets <hello@hotglue.xyz>'))
     return credentials
+
+
+def giveup(exc):
+    return exc.resp is not None \
+        and 400 <= int(exc.resp["status"]) < 500 \
+        and int(exc.resp["status"]) != 429
+
+
+def retry_handler(details):
+    logger.info("Http unsuccessful request -- Retry %s/%s", details['tries'], MAX_RETRIES)
 
 
 def emit_state(state):
@@ -82,13 +97,20 @@ def add_sheet(service, spreadsheet_id, title):
         }).execute()
 
 
+@backoff.on_exception(backoff.expo,
+                      HttpError,
+                      max_tries=MAX_RETRIES,
+                      jitter=None,
+                      giveup=giveup,
+                      on_backoff=retry_handler)
 def append_to_sheet(service, spreadsheet_id, range, values):
     return service.spreadsheets().values().append(
         spreadsheetId=spreadsheet_id,
         range=range,
         valueInputOption='USER_ENTERED',
         body={'values': [values]}).execute()
-    
+
+
 def flatten(d, parent_key='', sep='__'):
     items = []
     for k, v in d.items():
@@ -98,6 +120,7 @@ def flatten(d, parent_key='', sep='__'):
         else:
             items.append((new_key, str(v) if type(v) is list else v))
     return dict(items)
+
 
 def persist_lines(service, spreadsheet, lines):
     state = None
