@@ -49,7 +49,7 @@ def get_credentials(config):
     Returns:
         Credentials, the obtained credential.
     """
-    credentials = client.AccessTokenCredentials(config['access_token'], config.get("user-agent", 'target-google-sheets <hello@hotglue.xyz>'))
+    credentials = client.OAuth2Credentials(config['access_token'], config['client_id'], config['client_secret'], config['refresh_token'], config['expires_in'], config['auth_url'], config.get("user-agent", 'target-google-sheets <hello@hotglue.xyz>'))
     return credentials
 
 
