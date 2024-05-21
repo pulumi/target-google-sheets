@@ -14,7 +14,7 @@ setup(name='target-google-sheets',
           'singer-python==1.5.0',
           'google-api-python-client==1.6.2',
           'backoff==1.3.2',
-          'requests==2.31.0'
+          'requests==2.32.0'
       ],
       entry_points='''
           [console_scripts]
